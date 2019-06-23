@@ -1,10 +1,93 @@
 #!/bin/bash
 
+readonly app_version="1.8.1"
+readonly svr_version="1.3"
+readonly os_ubuntu_supported=(xenial bionic)
+readonly php_supported=(7.1 7.2 7.3)
+
 # echo colors
-red=`tput setaf 1`
-gre=`tput setaf 2`
-blu=`tput setaf 6`
-end=`tput sgr0`
+readonly red=`tput setaf 1`
+readonly gre=`tput setaf 2`
+readonly blu=`tput setaf 6`
+readonly end=`tput sgr0`
+
+
+
+check_ubuntu_release() {
+	local check="false"
+	for val in "${os_ubuntu_supported[@]}"
+	do 
+		[[ $val == $1 ]] && check="true"
+	done
+	echo $check
+}
+check_php_version() {
+	local check="false"
+	for val in "${php_supported[@]}"
+	do 
+		[[ $val == $1 ]] && check="true"
+	done
+	echo $check
+}
+
+check_osname() {
+	local distr=`echo $(lsb_release -i | cut -d':' -f 2)`
+	local osver=`echo $(lsb_release -c | cut -d':' -f 2)`
+	if ! [[ $distr == "Ubuntu" && $(check_ubuntu_release $osver) == "true" ]]; then
+		echo "${red}" >&2
+		echo "****************************************************************************" >&2
+		echo "****  This OS is not supported by Webinoly and could not work properly  ****" >&2
+		echo "****************************************************************************" >&2
+		echo "${end}" >&2
+	fi
+	echo $osver
+}
+
+
+check_for_nginx() {
+	if [[ $(conf_read nginx) != "true" ]]; then
+		echo "${red}[ERROR] NGINX is required and not found! ${end}"
+		exit 1
+	fi
+}
+check_for_php() {
+	if [[ $(conf_read php) != "true" ]]; then
+		echo "${red}[ERROR] PHP is required and not found! ${end}"
+		exit 1
+	fi
+}
+check_for_mysql() {
+	if [[ $(conf_read mysql) != "true" ]]; then
+		echo "${red}[ERROR] MySQL is required and not found! ${end}"
+		exit 1
+	fi
+}
+
+
+conf_read() {
+	if [[ ! -a /opt/webinoly/webinoly.conf ]]; then
+		echo "${red}[ERROR] Config file not found!${end}"
+		exit 1
+	fi
+	
+	local val=$(grep -w "^${1}:.*" /opt/webinoly/webinoly.conf | cut -f 2 -d ':')
+	echo $val
+}
+
+conf_delete() {
+	if [[ ! -a /opt/webinoly/webinoly.conf ]]; then
+		echo "${red}[ERROR] Config file not found!${end}"
+		exit 1
+	fi
+	
+	sed -i "/^${1}:/d" /opt/webinoly/webinoly.conf
+}
+
+conf_write() {
+	[[ ! -a /opt/webinoly/webinoly.conf ]] && sudo touch /opt/webinoly/webinoly.conf
+	conf_delete $1
+	echo "$1:$2" >> /opt/webinoly/webinoly.conf
+}
 
 
 db_delete() {
@@ -106,20 +189,6 @@ db_delete() {
 }
 
 
-check_osname() {
-	local distr=`echo $(lsb_release -i | cut -d':' -f 2)`
-	local osver=`echo $(lsb_release -c | cut -d':' -f 2)`
-	if ! [[ $distr == "Ubuntu" && $osver =~ ^(trusty|xenial|artful|bionic|cosmic)$ ]]; then
-		echo "${red}" >&2
-		echo "****************************************************************************" >&2
-		echo "****  This OS is not supported by Webinoly and could not work properly  ****" >&2
-		echo "****************************************************************************" >&2
-		echo "${end}" >&2
-	fi
-	echo $osver
-}
-
-
 pre_install() {
 	sudo apt -qq update
 	if [[ $(conf_read pre-packs) != true ]]; then
@@ -142,17 +211,17 @@ mysql_client_install() {
 	local osname=$(check_osname)
 	# Cases with MariaDB v10.3 support - https://downloads.mariadb.org/mariadb/repositories/
 	case "$osname" in
-		"trusty")
-			sudo apt-key adv --recv-keys --keyserver hkp://keyserver.ubuntu.com:80 0xcbcb082a1bb943db
-			sudo add-apt-repository "deb [arch=amd64,i386,ppc64el] http://mirrors.syringanetworks.net/mariadb/repo/10.3/ubuntu $osname main"
-		;;
 		"xenial")
 			sudo apt-key adv --recv-keys --keyserver hkp://keyserver.ubuntu.com:80 0xF1656F24C74CD1D8
 			sudo add-apt-repository "deb [arch=amd64,arm64,i386,ppc64el] http://mirrors.syringanetworks.net/mariadb/repo/10.3/ubuntu $osname main"
 		;;
-		"bionic"|"cosmic")
+		"bionic")
 			sudo apt-key adv --recv-keys --keyserver hkp://keyserver.ubuntu.com:80 0xF1656F24C74CD1D8
 			sudo add-apt-repository "deb [arch=amd64,arm64,ppc64el] http://mirrors.syringanetworks.net/mariadb/repo/10.3/ubuntu $osname main"
+		;;
+		"cosmic"|"disco")
+			sudo apt-key adv --recv-keys --keyserver hkp://keyserver.ubuntu.com:80 0xF1656F24C74CD1D8
+			sudo add-apt-repository "deb [arch=amd64] http://mirrors.syringanetworks.net/mariadb/repo/10.3/ubuntu $osname main"
 		;;
 	esac
 	pre_install
@@ -186,23 +255,6 @@ api-events_update() {
 		source /opt/webinoly/lib/api-events
 		api-events_catch_status $1
 	fi
-}
-
-
-conf_read() {
-	local val=$(grep -w "^${1}:.*" /opt/webinoly/webinoly.conf | cut -f 2 -d ':')
-	echo $val
-}
-
-conf_write() {
-	[[ ! -a /opt/webinoly/webinoly.conf ]] && sudo touch /opt/webinoly/webinoly.conf
-	#if requested VAR exists overwrite it, if not, create it.
-	sed -i "/^${1}:/d" /opt/webinoly/webinoly.conf
-	sh -c "echo -n '$1:$2\n' >> /opt/webinoly/webinoly.conf"
-}
-
-conf_delete() {
-	sed -i "/^${1}:/d" /opt/webinoly/webinoly.conf
 }
 
 

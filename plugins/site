@@ -2,23 +2,17 @@
 
 # Site Manager Plugin (Create, delete and de/activate)
 # Syntax: site <domain> <option> <argument>
-# Options: -html, -php, -mysql, -wp, -wpsubdir, -wpsubdom, -parked, -proxy, -on, -off, -delete, -delete-all, -list, -nocache, -cache, -ssl-on, ssl-off, -force-redirect
+# Options: -html, -php, -mysql, -wp, -wpsubdir, -wpsubdom, -parked, -proxy, -on, -off, -delete, -delete-all, -list, -cache, -ssl, -force-redirect
 # Arguments: -cache, -root, -root-path, -subdomain, -ignore-ssl, -wildcard, -raw, -external-db, -revoke, -ssl-crt, -ssl-key, -ssl-ocsp
 
 # shopt is necessary for this kind !(html|22222) of patterns
 shopt -s extglob
 
-source /opt/webinoly/lib/general
 source /opt/webinoly/lib/sites
 check_for_parameters $@
 api-events_update sis
+check_for_nginx
 
-if [[ ! $(conf_read nginx) == "true" ]]; then
-	echo ""
-	echo "${red}[ERROR] NGINX is required to create a site! ${end}"
-	echo ""
-	exit 1
-fi
 
 # Check if site is sub-domain
 if [[ -n $domain ]]; then
@@ -31,6 +25,11 @@ if [[ -n $domain ]]; then
 		count=$[$count+1]
 	done
 	[[ -n $(echo "$(echo "${domain}" | rev | cut -d'.' -f $count- -s | rev)" | cut -d'.' -f 2 -s) || $count == 1 ]] && subdomflag="1" || subdomflag="0"
+fi
+# Get variables with sub-domain info
+if [[ $subdomflag == 1 ]]; then
+	main_domain=$(echo "${domain}" | rev | cut -d'.' -f -$count -s | rev)
+	sub_domain=$(echo "${domain}" | rev | cut -d'.' -f $[$count+1]- -s | rev)
 fi
 # Overwrite value if defined by user
 [[ $subdomain == "true" ]] && subdomflag="1"
@@ -136,6 +135,7 @@ if [[ -n $list ]]; then
 	done
 	[[ -z $nonemptylist && -z $raw && $list != "raw" ]] && echo "${blu}[Empty] No sites were found!${end}"
 	echo ""
+	nginx_not="true" # Nginx-Reload not-needed.
 
 	
 # Delete all sites
@@ -151,7 +151,7 @@ elif [[ -n $delete_all ]]; then
 	do
 		delete="force"
 		domain=$(echo $site | cut -f 5 -d "/")
-		[[ $domain != "html" && $domi != "default" && $domain != $(conf_read tools-port) ]] && deletesite
+		[[ $domain != "default" && $domain != $(conf_read tools-port) ]] && deletesite
 	done
 	
 	# Delete all files - double check!
@@ -284,9 +284,8 @@ elif [[ -n $proxy && -n $domain ]]; then
 	
 	
 # Site disabled	
-elif [[ -n $off && ! -L /etc/nginx/sites-enabled/$domain ]]; then
-	echo "${red}Site${blu} $domain ${red}doesn't exist or is already disabled!${end}"
-	exit 1
+elif [[ -n $off && ! -L /etc/nginx/sites-enabled/$domain && -a /etc/nginx/sites-available/$domain ]]; then
+		echo "${gre}Seems like your site${blu} $domain ${red}is already disabled!${end}"
 elif [[ -n $off && -L /etc/nginx/sites-enabled/$domain ]]; then
 	api-events_update si5
 	echo "${gre}Site${blu} $domain ${gre}has been successfully disabled!${end}"
@@ -305,12 +304,18 @@ elif [[ -n $on && ! -L /etc/nginx/sites-enabled/$domain && -a /etc/nginx/sites-a
 # Delete site	
 elif [[ -n $delete && -a /etc/nginx/sites-available/$domain ]]; then
 	api-events_update si6
-	deletesite
+	if [[ $domain == "default" || $domain == $(conf_read tools-port) ]]; then
+		echo "${red}[ERROR] System sites can not be removed!${end}"
+		exit 1
+	else
+		deletesite
+	fi
 
 
 # SSL (Letsencrypt)
 elif [[ $ssl == "renew" && -z $domain ]]; then
-		sudo certbot renew --post-hook "service nginx restart"
+		# Post-Hook removed because we always restart nginx at the end of site command
+		sudo certbot renew
 elif [[ ( -n $ssl_off || $ssl == "off" ) && ! -a /etc/nginx/sites-available/$domain && -a /etc/letsencrypt/live/$domain/cert.pem ]]; then
 	echo "${red}[WARNING] SSL Orphan-Cert found and will be revoked automatically!${end}"
 	ssl_revoke
@@ -367,7 +372,7 @@ elif [[ ( -n $nocache || ( -n $cache && $cache == "off" )) && -a /etc/nginx/site
 		sudo sed -i '/wpfc.conf/c \	include common/php.conf;' /etc/nginx/sites-available/$domain
 		echo "${gre}FastCGI Cache in${blu} $domain ${gre}has been disabled!${end}"
 	else
-		echo "${red}Site${blu} $domain ${red}is not a WP site or FastCGI is already disabled!${end}"
+		echo "${red}[ERROR] Site${blu} $domain ${red}is not a WP site or FastCGI is already disabled!${end}"
 		exit 1
 	fi
 	
@@ -392,14 +397,14 @@ elif [[ ( -n $cache || $cache == "on" ) && -a /etc/nginx/sites-available/$domain
 			done
 		fi
 		echo "${gre}"
-		echo " FastCGI Cache in${blu} $domain ${gre}has been successfully enabled! "
+		echo "FastCGI Cache in${blu} $domain ${gre}has been successfully enabled! "
 		echo "${end}"
 	else
-		echo "${red}Site${blu} $domain ${red}is not a WP site or FastCGI is already enabled!${end}"
+		echo "${red}[ERROR] Site${blu} $domain ${red}is not a WP site or FastCGI is already enabled!${end}"
 		exit 1
 	fi
 
-	
+
 # Force www or non-www redirect (www, root, off)
 elif [[ -n $force_redirect && -a /etc/nginx/sites-available/$domain ]]; then
 	force_redirect
@@ -407,7 +412,7 @@ elif [[ -n $force_redirect && -a /etc/nginx/sites-available/$domain ]]; then
 	
 # Catch ERROR 
 elif [[ -n $domain && ! -a /etc/nginx/sites-available/$domain ]]; then
-	echo "${red}Site${blu} $domain ${red}doesn't exists!${end}"
+	echo "${red}[ERROR] Site${blu} $domain ${red}doesn't exists, please enter a valid domain name!${end}"
 	exit 1
 else
 	echo "${red}[ERROR] Please, enter a valid option! ${end}"
@@ -415,5 +420,5 @@ else
 fi
 
 shopt -u extglob
-[[ $(conf_read nginx) == "true" ]] && sudo service nginx reload
+[[ $(conf_read nginx) == "true" && -z $nginx_not ]] && sudo service nginx reload
 api-events_update sie
