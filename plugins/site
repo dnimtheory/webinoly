@@ -11,7 +11,7 @@ shopt -s extglob
 source /opt/webinoly/lib/sites
 check_for_parameters $@
 api-events_update sis
-check_for_nginx
+check_for_nginx -ask
 
 
 # Check if site is sub-domain
@@ -104,6 +104,8 @@ if [[ -n $wp || -n $wpsubdir || -n $wpsubdom || -n $mysql ]]; then
 		fi
 	fi
 fi
+[[ $type == [123] || -n $php ]] && check_for_php -ask
+[[ $type == [24] ]] && check_for_mysql -ask
 
 
 # List Sites
@@ -144,7 +146,21 @@ elif [[ -n $delete_all ]]; then
 	echo "${red}"
 	echo "All your sites files will be removed."
 	echo "This action will only delete Databases attached to a WordPress site, any other Database will not be deleted."
-	echo "${end}"
+	
+	if [[ $delete_all != "force" ]]; then
+		echo "${blu}"
+		echo "Are you sure [y/N]? ${end}"
+		while read -r -n 1 -s answer; do
+			answer=${answer:-n}
+			echo ""
+			[[ $answer = [YyNn] ]] && break
+		done
+		
+		if [[ $answer == [Nn] ]]; then
+			echo "${red}Action aborted!${end}"
+			exit 1
+		fi
+	fi
 	
 	# List all remaining sites (parked and proxy)
 	for site in "/etc/nginx/sites-available"/*
@@ -285,7 +301,7 @@ elif [[ -n $proxy && -n $domain ]]; then
 	
 # Site disabled	
 elif [[ -n $off && ! -L /etc/nginx/sites-enabled/$domain && -a /etc/nginx/sites-available/$domain ]]; then
-		echo "${gre}Seems like your site${blu} $domain ${red}is already disabled!${end}"
+		echo "${gre}Seems like your site${blu} $domain ${gre}is already disabled!${end}"
 elif [[ -n $off && -L /etc/nginx/sites-enabled/$domain ]]; then
 	api-events_update si5
 	echo "${gre}Site${blu} $domain ${gre}has been successfully disabled!${end}"
@@ -320,11 +336,10 @@ elif [[ ( -n $ssl_off || $ssl == "off" ) && ! -a /etc/nginx/sites-available/$dom
 	echo "${red}[WARNING] SSL Orphan-Cert found and will be revoked automatically!${end}"
 	ssl_revoke
 elif [[ ( -n $ssl_on || -n $ssl_off || -n $ssl ) && -a /etc/nginx/sites-available/$domain ]]; then
-	isssl=$(sed -n -e '/WebinolyNginxServerStart/,$p' /etc/nginx/sites-available/$domain | grep -F "ssl_certificate_key")
 	if [[ -n $ssl_on || $ssl == "on" || $ssl == "force-renewal" ]]; then
 		api-events_update si10
-		if [[ -n $isssl && $ssl != "force-renewal" ]]; then
-			echo "${red}SSL is already enabled for your site -${blu} $domain ${end}"
+		if [[ $(is_ssl $domain) == "true" && $ssl != "force-renewal" ]]; then
+			echo "${gre}SSL is already enabled for your site -${blu} $domain ${end}"
 		elif [[ -n $ssl_crt || -n $ssl_key ]]; then
 			if [[ -a $ssl_crt && -a $ssl_key ]]; then
 				ssl_nginx
@@ -335,30 +350,31 @@ elif [[ ( -n $ssl_on || -n $ssl_off || -n $ssl ) && -a /etc/nginx/sites-availabl
 			fi
 		elif [[ -n $add_to_wildcard ]]; then
 			if [[ $add_to_wildcard == true ]]; then
-				echo "${red}[ERROR] Please, enter a valid wildcard SSL domain! ${end}"
+				echo "${gre}Please, enter a valid Wildcard SSL Domain! ${end}"
+				read -p "${blu}Domain: ${end}" add_to_wildcard
+				add_to_wildcard=${add_to_wildcard:-NeverMatchDotCom}
+			fi
+			
+			# Check if domain is a subdomain that can be used in the wildcard cert.
+			if [[ $domain == *.*."$add_to_wildcard" ]]; then
+				echo "${red}[ERROR] Wildcard Certs only support first-level subdomains!${end}"
 				exit 1
+			elif [[ ! -d /etc/letsencrypt/live/$add_to_wildcard ]]; then
+				echo "${red}[ERROR] Wildcard Cert not found!${end}"
+				exit 1
+			elif [[ $domain == *."$add_to_wildcard" ]]; then
+				ssl_nginx
+				echo "${gre}Your site ${blu}- $domain -${gre} have been successfully added to the ${blu}- $add_to_wildcard -${gre} wildcard cert.${end}"
 			else
-				# Check if domain is a subdomain that can be used in the wildcard cert.
-				if [[ $domain == *.*."$add_to_wildcard" ]]; then
-					echo "${red}[ERROR] Wildcard Certs only support first-level subdomains!${end}"
-					exit 1
-				elif [[ ! -d /etc/letsencrypt/live/$add_to_wildcard ]]; then
-					echo "${red}[ERROR] Wildcard Cert not found!${end}"
-					exit 1
-				elif [[ $domain == *."$add_to_wildcard" ]]; then
-					ssl_nginx
-					echo "${gre}Your site ${blu}- $domain -${gre} have been successfully added to the ${blu}- $add_to_wildcard -${gre} wildcard cert.${end}"
-				else
-					echo "${red}[ERROR] Seems like your site is not a valid subdomain!${end}"
-					exit 1
-				fi
+				echo "${red}[ERROR] Seems like your site is not a valid subdomain!${end}"
+				exit 1
 			fi
 		else
 			site_ssl_on
 		fi
 	elif [[ -n $ssl_off || $ssl =~ ^(off|off-force)$ ]]; then
 		api-events_update si11
-		[[ -n $isssl ]] && site_ssl_off || 	echo "${red}SSL is already disabled for your site -${blu} $domain ${end}"
+		[[ $(is_ssl $domain) == "true" ]] && site_ssl_off || echo "${gre}SSL is already disabled for your site${blu} $domain ${end}"
 	else
 		echo "${red}[ERROR] Invalid option for SSL command! ${end}"
 		exit 1
@@ -367,22 +383,23 @@ elif [[ ( -n $ssl_on || -n $ssl_off || -n $ssl ) && -a /etc/nginx/sites-availabl
 # FastCGI Cache disabled
 elif [[ ( -n $nocache || ( -n $cache && $cache == "off" )) && -a /etc/nginx/sites-available/$domain ]]; then
 	api-events_update si9
-	isfc=$( grep -F "wpfc.conf" /etc/nginx/sites-available/$domain )
-	if [[ -n $isfc ]]; then
+	if [[ $(is_wp_cache $domain) == "true" ]]; then
 		sudo sed -i '/wpfc.conf/c \	include common/php.conf;' /etc/nginx/sites-available/$domain
 		echo "${gre}FastCGI Cache in${blu} $domain ${gre}has been disabled!${end}"
 	else
-		echo "${red}[ERROR] Site${blu} $domain ${red}is not a WP site or FastCGI is already disabled!${end}"
-		exit 1
+		if [[ $(is_wp $domain) == "false" ]]; then
+			echo "${red}[ERROR] Site${blu} $domain ${red}is not a WP site!${end}"
+			exit 1
+		else
+			echo "${gre}FastCGI Cache is already disabled on your site${blu} $domain${end}"
+		fi
 	fi
 	
 	
 # FastCGI Cache enabled
 elif [[ ( -n $cache || $cache == "on" ) && -a /etc/nginx/sites-available/$domain ]]; then
 	api-events_update si8
-	isphp=$( grep -F "php.conf" /etc/nginx/sites-available/$domain )
-	iswp=$( grep -F "wpcommon.conf" /etc/nginx/sites-available/$domain )
-	if [[ -n $isphp && -n $iswp ]]; then
+	if [[ $(is_php $domain) == "true" && $(is_wp $domain) == "true" ]]; then
 		sudo sed -i '/php.conf/c \	include common/wpfc.conf;' /etc/nginx/sites-available/$domain
 		if [[ ! -d /var/www/$domain/htdocs/wp-content/plugins/nginx-helper || ! -d /var/www/$domain/htdocs/wp-content/plugins/redis-cache ]]; then
 			echo "${gre}"
@@ -400,8 +417,12 @@ elif [[ ( -n $cache || $cache == "on" ) && -a /etc/nginx/sites-available/$domain
 		echo "FastCGI Cache in${blu} $domain ${gre}has been successfully enabled! "
 		echo "${end}"
 	else
-		echo "${red}[ERROR] Site${blu} $domain ${red}is not a WP site or FastCGI is already enabled!${end}"
-		exit 1
+		if [[ $(is_wp $domain) == "false" ]]; then
+			echo "${red}[ERROR] Site${blu} $domain ${red}is not a WP site!${end}"
+			exit 1
+		else
+			echo "${gre}FastCGI Cache is already enabled on your site${blu} $domain${end}"
+		fi
 	fi
 
 

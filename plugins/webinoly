@@ -108,6 +108,13 @@ elif [[ -n $tools_port ]]; then
 
 
 elif [[ -n $tools_site ]]; then
+	check_for_nginx -ask
+	if [[ $tools_site == true ]]; then
+		echo "${gre}Please, enter a valid domain to access the Tools Section! ${end}"
+		read -p "${blu}Domain: ${end}" tools_site
+		tools_site=${tools_site:-NeverMatchDotCom}
+	fi	
+	
 	if [[ -a /etc/nginx/sites-available/$tools_site ]]; then
 		# Check for previous assigned domain and remove
 		if [[ -n $(conf_read tools-site) ]]; then
@@ -127,8 +134,7 @@ elif [[ -n $tools_site ]]; then
 		sudo sed -i "/listen \[::\]:$(conf_read tools-port)/c \	listen [::]:$(conf_read tools-port);" /etc/nginx/sites-available/$(conf_read tools-port)
 		
 		# If SSL is enabled
-		isssl=$(sed -n -e '/WebinolyNginxServerStart/,$p' /etc/nginx/sites-available/$tools_site | grep -F "ssl_certificate_key")
-		if [[ -n $isssl ]]; then
+		if [[ $(is_ssl $tools_site) == "true" ]]; then
 			sudo sed -i "/listen $(conf_read tools-port)/c \	listen $(conf_read tools-port) ssl http2 deferred;" /etc/nginx/sites-available/$(conf_read tools-port)
 			sudo sed -i "/listen \[::\]:$(conf_read tools-port)/c \	listen [::]:$(conf_read tools-port) ssl http2;" /etc/nginx/sites-available/$(conf_read tools-port)
 			sudo sed -i '/server_name /r /opt/webinoly/templates/template-site-ssl' /etc/nginx/sites-available/$(conf_read tools-port)
@@ -141,7 +147,7 @@ elif [[ -n $tools_site ]]; then
 		# Default blackhole for requests different from our assigned Tools-Site
 		sudo sed -i '/Webinoly Admin-Tools NGINX CONFIGURATION/r /opt/webinoly/templates/general/tools-site-blackhole' /etc/nginx/sites-available/$(conf_read tools-port)
 		sudo sed -i "/WebinolyToolsStartBlackhole/,/WebinolyToolsEndBlackhole/{s/22222/$(conf_read tools-port)/}" /etc/nginx/sites-available/$(conf_read tools-port)
-		if [[ -z $isssl ]]; then
+		if [[ $(is_ssl $tools_site) == "false" ]]; then
 			sudo sed -i "/WebinolyToolsStartBlackhole/,/WebinolyToolsEndBlackhole/{/ssl_certificate/d}" /etc/nginx/sites-available/$(conf_read tools-port)
 			sudo sed -i "/WebinolyToolsStartBlackhole/,/WebinolyToolsEndBlackhole/{/error_page/d}" /etc/nginx/sites-available/$(conf_read tools-port)
 			sudo sed -i "/WebinolyToolsStartBlackhole/,/WebinolyToolsEndBlackhole/{s/ssl //}" /etc/nginx/sites-available/$(conf_read tools-port)
@@ -157,7 +163,7 @@ elif [[ -n $tools_site ]]; then
 
 	
 elif [[ -n $login_www_data || -n $nologin_www_data ]]; then
-	check_for_nginx
+	check_for_nginx -ask
 	if [[ -n $login_www_data && ! $login_www_data =~ ^(on|off|true)$ ]]; then
 		echo "${red}[ERROR] Invalid option! ${end}"
 		exit 1
@@ -296,25 +302,25 @@ elif [[ -n $uninstall ]]; then
 	echo "You are about to completely remove Webinoly App from your server!!"
 	echo "${blu}Are you sure [y/N]? "
 	while read -r -n 1 -s answer; do
-	  answer=${answer:-n}
-	  echo ""
-	  if [[ $answer = [YyNn] ]]; then
-		if [[ $answer == [Yy] ]]; then
-			sudo mv /opt/webinoly/webinoly.conf $HOME/.webinoly-conf-restore_dont-remove
-			sudo rm -rf /opt/webinoly
-			sudo rm /usr/bin/webinoly
-			sudo rm /usr/bin/stack
-			sudo rm /usr/bin/site
-			sudo rm /usr/bin/httpauth
-			sudo rm /usr/bin/log			
-			echo "${gre}Webinoly App has been removed successfully from your server!${end}"
-			exit 0
-		else
-			echo "${gre}Action aborted!${end}"
-		fi
-		break
-	  fi
+		answer=${answer:-n}
+		echo ""
+		[[ $answer = [YyNn] ]] && break
 	done
+	
+	if [[ $answer == [Yy] ]]; then
+		sudo tar -Pcf $HOME/.webinoly-conf-restore_dont-remove /opt/webinoly/webinoly.conf /opt/webinoly/templates/source
+		sudo rm -rf /opt/webinoly
+		sudo rm /usr/bin/webinoly
+		sudo rm /usr/bin/stack
+		sudo rm /usr/bin/site
+		sudo rm /usr/bin/httpauth
+		sudo rm /usr/bin/log			
+		echo "${gre}Webinoly App has been removed successfully from your server!${end}"
+		exit 0
+	else
+		echo "${red}Action aborted!${end}"
+		exit 1
+	fi
 	nginx_not="true" # Nginx-Reload not-needed.
 
 
@@ -438,6 +444,7 @@ elif [[ -n $version || -n $v || -n $V ]]; then
 
 
 elif [[ -n $blockip ]]; then
+	check_for_nginx -ask
 	if [[ -a /etc/nginx/conf.d/blockips.conf ]]; then
 		if [[ -n $list ]]; then
 			[[ $list == "raw" || -n $raw ]] && echo "" || echo "${blu}"
@@ -466,6 +473,7 @@ elif [[ -n $blockip ]]; then
 
 
 elif [[ -n $unblockip ]]; then
+	check_for_nginx -ask
 	if [[ -a /etc/nginx/conf.d/blockips.conf ]]; then
 		[[ $unblockip == true ]] && read -p "${blu}IP address to unblock: ${end}" unblockip
 		if [[ $(ip_check $unblockip) == "true" ]]; then
@@ -524,7 +532,13 @@ elif [[ -n $yoast_sitemap ]]; then
 
 
 elif [[ -n $default_site ]]; then
-	check_for_nginx
+	check_for_nginx -ask
+	if [[ $default_site == true ]]; then
+		echo "${gre}Please, enter a valid option to set the Default-Site server response! ${end}"
+		read -p "${blu}default/blackhole or any existing domain: ${end}" default_site
+		default_site=${default_site:-NeverMatchDotCom}
+	fi
+	
 	if [[ $default_site == "default" ]]; then
 		if [[ -a /opt/webinoly/templates/source/default ]]; then
 			sudo cat /opt/webinoly/templates/source/default >| /etc/nginx/sites-available/default
@@ -551,8 +565,7 @@ elif [[ -n $default_site ]]; then
 			sudo sed -i '/WebinolyNginxServerStart/,/WebinolyNginxServerEnd/{s/listen \[::\]:443 ssl http2;/listen [::]:443 ssl http2 default_server;/}' /etc/nginx/sites-available/$default_site
 			
 			# If default site is Non-SSL, we need add a blackhole for port 443.
-			isssl=$(sed -n -e '/WebinolyNginxServerStart/,$p' /etc/nginx/sites-available/$default_site | grep -F "ssl_certificate_key")
-			if [[ -z $isssl ]]; then
+			if [[ $(is_ssl $default_site) == "false" ]]; then
 				create_blackhole_cert
 				sudo sed -i '1r /opt/webinoly/templates/general/nginx-blackhole' /etc/nginx/sites-available/$default_site
 				sudo sed -i '/NonSSL/,/NonSSLend/{/.*/d}' /etc/nginx/sites-available/$default_site

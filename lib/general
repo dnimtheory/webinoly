@@ -1,6 +1,6 @@
 #!/bin/bash
 
-readonly app_version="1.8.1"
+readonly app_version="1.8.3"
 readonly svr_version="1.3"
 readonly os_ubuntu_supported=(xenial bionic)
 readonly php_supported=(7.1 7.2 7.3)
@@ -45,18 +45,57 @@ check_osname() {
 
 
 check_for_nginx() {
+	if [[ $(conf_read nginx) != "true" && $1 == "-ask" ]]; then
+		echo "${red}"
+		echo "+ NGINX Not Found!"
+		echo "${blu}Do you want to install it now? [y/N]? ${end}"
+		while read -r -n 1 -s answer; do
+			answer=${answer:-n}
+			echo ""
+			[[ $answer = [YyNn] ]] && break
+		done
+		
+		[[ $answer == [Yy] ]] && sudo stack -nginx
+	fi
+	
 	if [[ $(conf_read nginx) != "true" ]]; then
 		echo "${red}[ERROR] NGINX is required and not found! ${end}"
 		exit 1
 	fi
 }
 check_for_php() {
+	if [[ $(conf_read php) != "true" && $1 == "-ask" ]]; then
+		echo "${red}"
+		echo "+ PHP Not Found!"
+		echo "${blu}Do you want to install it now? [y/N]? ${end}"
+		while read -r -n 1 -s answer; do
+			answer=${answer:-n}
+			echo ""
+			[[ $answer = [YyNn] ]] && break
+		done
+		
+		[[ $answer == [Yy] ]] && sudo stack -php
+	fi
+	
 	if [[ $(conf_read php) != "true" ]]; then
 		echo "${red}[ERROR] PHP is required and not found! ${end}"
 		exit 1
 	fi
 }
 check_for_mysql() {
+	if [[ $(conf_read mysql) != "true" && $1 == "-ask" ]]; then
+		echo "${red}"
+		echo "+ MySQL Not Found!"
+		echo "${blu}Do you want to install it now? [y/N]? ${end}"
+		while read -r -n 1 -s answer; do
+			answer=${answer:-n}
+			echo ""
+			[[ $answer = [YyNn] ]] && break
+		done
+		
+		[[ $answer == [Yy] ]] && sudo stack -mysql
+	fi
+	
 	if [[ $(conf_read mysql) != "true" ]]; then
 		echo "${red}[ERROR] MySQL is required and not found! ${end}"
 		exit 1
@@ -302,4 +341,21 @@ ip_check() {
 	else
 		echo "false"
 	fi
+}
+
+
+is_ssl() {
+	[[ -n $(sed -n -e '/WebinolyNginxServerStart/,$p' /etc/nginx/sites-available/$1 | grep -F "ssl_certificate_key") ]] && echo "true" || echo "false"
+}
+
+is_php() {
+	[[ -n $(sed -n -e '/WebinolyNginxServerStart/,$p' /etc/nginx/sites-available/$1 | grep -F "php.conf;") ]] && echo "true" || echo "false"
+}
+
+is_wp() {
+	[[ -n $(sed -n -e '/WebinolyNginxServerStart/,$p' /etc/nginx/sites-available/$1 | grep -F "wpcommon.conf;") ]] && echo "true" || echo "false"
+}
+
+is_wp_cache() {
+	[[ -n $(sed -n -e '/WebinolyNginxServerStart/,$p' /etc/nginx/sites-available/$1 | grep -F "wpfc.conf;") ]] && echo "true" || echo "false"
 }
