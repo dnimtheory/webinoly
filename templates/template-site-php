@@ -5,14 +5,19 @@ server {
 	listen [::]:80;
 
 	server_name domain.com www.domain.com;
-
+	
 	access_log /var/log/nginx/domain.com.access.log we_log; 
 	error_log /var/log/nginx/domain.com.error.log;
-
+	
 	root /var/www/domain.com/htdocs;
 		
 	index  index.php index.html index.htm;
-		
+	
+	include common/auth.conf;
+	
+	# WebinolyCustom
+	# WebinolyCustomEnd
+	
 	include common/php.conf;
 	include common/locations.conf;
 	include common/headers-http.conf;

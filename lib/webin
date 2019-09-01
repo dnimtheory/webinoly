@@ -75,10 +75,6 @@ webinoly_verify() {
 		echo "[ERROR] File: /opt/webinoly/templates/nginx/22222 not found!"
 		error="1"
 	fi
-	if [[ ! -a /opt/webinoly/templates/nginx/conf.d/blockips.conf ]]; then
-			echo "[WARNING] File: /opt/webinoly/templates/nginx/conf.d/blockips.conf not found!"
-			warning="1"
-		fi
 	if [[ ! -a /opt/webinoly/templates/nginx/conf.d/fastcgi.conf ]]; then
 		echo "[ERROR] File: /opt/webinoly/templates/nginx/conf.d/fastcgi.conf not found!"
 		error="1"
@@ -176,13 +172,9 @@ webinoly_verify() {
 			echo "[ERROR] File: /etc/nginx/fastcgi_params not found!"
 			error="1"
 		fi
-		if [[ ! -a /etc/nginx/.htpasswd && $(conf_read php) == "true" ]]; then
-			echo "[INFO] File: /etc/nginx/.htpasswd not found! (Create your HTTP Auth Credentials to remove this message)"
+		if ! [[ -a /etc/nginx/.htpasswd && $(conf_read php) == "true" || ( -n $(conf_read tools-site) && -a /etc/nginx/apps.d/.htpasswd-$(conf_read tools-site) && $(conf_read php) == "true" ) ]]; then
+			echo "[INFO] HTTP Authentication Credentials not found!"
 			info="1"
-		fi
-		if [[ ! -a /etc/nginx/conf.d/blockips.conf ]]; then
-			echo "[WARNING] File: /etc/nginx/conf.d/blockips.conf not found!"
-			warning="1"
 		fi
 		if [[ ! -a /etc/nginx/conf.d/fastcgi.conf ]]; then
 			echo "[ERROR] File: /etc/nginx/conf.d/fastcgi.conf not found!"
@@ -245,12 +237,8 @@ webinoly_verify() {
 			error="1"
 		fi
 	fi
-	if [[ $(conf_read nginx-tool) != "true" ]]; then
-		if [[ -a /etc/nginx/sites-available/$(conf_read tools-port) ]]; then
-			echo "[WARNING] Seems like Nginx Tools are enabled but Webinoly can not detect it!"
-			warning="1"
-		fi
-		if [[ -d /var/www/$(conf_read tools-port) ]]; then
+	if [[ $(conf_read nginx-tool) != "true" && -n $(conf_read tools-port) ]]; then
+		if [[ -a /etc/nginx/sites-available/$(conf_read tools-port) || -d /var/www/$(conf_read tools-port) ]]; then
 			echo "[WARNING] Seems like Nginx Tools are enabled but Webinoly can not detect it!"
 			warning="1"
 		fi
@@ -444,8 +432,8 @@ webinoly_verify() {
 	if [[ $(conf_read php) == "true" && $(php -v | grep -m1 "" | sed 's/PHP \([^\-]*\).*/\1/' | cut -f 1-2 -d'.') != "7.3" ]]; then
 		echo "[INFO] PHP v7.3 is recommended to get an optimal perfomance!"
 	fi
-	if [[ $(conf_read mysql) == "true" && $(sudo mysql --version  | sed 's/.*Distrib \([^\-]*\).*/\1/' | cut -f 1-2 -d'.') != "10.3" ]]; then
-		echo "[INFO] MariaDB (MySQL) v10.3 is recommended to get an optimal perfomance!"
+	if [[ $(conf_read mysql) == "true" && $(sudo mysql --version  | sed 's/.*Distrib \([^\-]*\).*/\1/' | cut -f 1-2 -d'.') != "10.4" ]]; then
+		echo "[INFO] MariaDB (MySQL) v10.4 is recommended to get an optimal perfomance!"
 	fi
 	
 	# Check OS support
@@ -698,6 +686,6 @@ remove_domain_default_site() {
 
 
 create_blackhole_cert() {
-	[[ ! -a /etc/ssl/certs/webinoly-blackhole.crt.pem ]] && sudo openssl req -new -newkey rsa:2048 -days 36500 -nodes -x509 -subj "/C=US/ST=Denial/L=Springfield/O=Dis/CN=blackhole" -keyout /etc/ssl/private/webinoly-blackhole.key.pem  -out /etc/ssl/certs/webinoly-blackhole.crt.pem
+	[[ ! -a /etc/ssl/certs/webinoly-blackhole.crt.pem ]] && sudo openssl req -new -newkey rsa:2048 -days 36500 -nodes -x509 -subj "/C=US/ST=Denial/L=Springfield/O=Dis/CN=blackhole" -keyout /etc/ssl/private/webinoly-blackhole.key.pem  -out /etc/ssl/certs/webinoly-blackhole.crt.pem > /dev/null 2>&1
 }
 

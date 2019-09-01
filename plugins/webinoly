@@ -2,7 +2,7 @@
 
 # Webinoly Server Manager Plugin
 # Syntax: webinoly <option> <argument>
-# Options: -update, -server-reset, -verify, -dbpass, -tools-port, -login-www-data, -config-cache, -uninstall, -info, -external-sources-update, -clear-cache, -version, -blockip, -unblockip, -conf-value_, -yoast-sitemap, -default-site, -tools-site, -mysql-password, -smtp
+# Options: -update, -server-reset, -verify, -dbpass, -tools-port, -login-www-data, -config-cache, -uninstall, -info, -external-sources-update, -clear-cache, -version, -blockip, -conf-value_, -yoast-sitemap, -default-site, -tools-site, -mysql-password, -smtp
 # Arguments: -raw
 
 source /opt/webinoly/lib/webin
@@ -17,7 +17,7 @@ if [[ -n $update ]]; then
 	if [[ ( -n $checkver && ${checkver//.} -gt ${currentver//.} ) || ( -n $update && $update != true ) ]]; then
 		echo ""
 		[[ -n $update && $update != true ]] && branch="-ver=${update}" || branch=""
-		sudo wget --timeout=15 -t 1 --referer="https://update.webinoly.com/?ver=$(app_version)" -qrO weby https://qrok.es/wyupd && sudo bash weby upd $branch
+		sudo wget --timeout=15 -t 1 --referer="https://update.webinoly.com/?ver=${app_version}" -qrO weby https://qrok.es/wyupd && sudo bash weby upd $branch
 		[[ $? == 0 ]] && echo "${gre}Webinoly App has been updated successfully!${end}"
 	else
 		echo "${gre}You currently have the latest version!${end}"
@@ -36,20 +36,15 @@ elif [[ -n $server_reset ]]; then
 	
 	# Regenerate NGINX conf files
 	if [[ $(conf_read nginx-optim) == "true" && $server_reset =~ ^(nginx|all)$ ]]; then
-		# Backup and keep blockip and whitelist
-		sudo cp -p /etc/nginx/conf.d/blockips.conf /tmp/webinoly_blockips_backup
-		sudo cp -p /etc/nginx/common/acl.conf /tmp/webinoly_whitelist_backup
-		
+		[[ -a /etc/nginx/conf.d/blockips.conf ]] && sudo cp -p /etc/nginx/conf.d/blockips.conf /tmp/webinoly_blockips_backup
 		sudo rm -rf /etc/nginx/common
 		sudo rm -rf /etc/nginx/conf.d/*
 		linux_purge
 		nginx_optim
-		sleep 3
-		
-		sudo mv /tmp/webinoly_blockips_backup /etc/nginx/conf.d/blockips.conf
-		sudo mv /tmp/webinoly_whitelist_backup /etc/nginx/common/acl.conf
+		[[ -a /tmp/webinoly_blockips_backup ]] && sudo mv /tmp/webinoly_blockips_backup /etc/nginx/conf.d/blockips.conf
 		echo "${gre}Nginx settings has been updated successfully!${end}"
-	elif [[ $(conf_read nginx-optim) != "true" && $server_reset =~ ^(nginx|all)$ ]]; then
+		nginx_not="true" # Nginx-Reload not-needed.
+	elif [[ $(conf_read nginx-optim) != "true" && $server_reset == "nginx" ]]; then
 		echo "${red}[ERROR] Nginx settings couldn't been updated, seems like is not installed in your server!${end}"
 		err_cont=true
 	fi
@@ -66,7 +61,7 @@ elif [[ -n $server_reset ]]; then
 			echo "${red}[ERROR] PHP could not been updated, source files not found!${end}"
 			exit 1
 		fi
-	elif [[ $(conf_read php-optim) != "true" && $server_reset =~ ^(nginx|all)$ ]]; then
+	elif [[ $(conf_read php-optim) != "true" && $server_reset == "php" ]]; then
 		echo "${red}[ERROR] PHP settings couldn't been updated, seems like is not installed in your server!${end}"
 		exit 1
 	fi
@@ -162,14 +157,9 @@ elif [[ -n $tools_site ]]; then
 	fi
 
 	
-elif [[ -n $login_www_data || -n $nologin_www_data ]]; then
+elif [[ -n $login_www_data ]]; then
 	check_for_nginx -ask
-	if [[ -n $login_www_data && ! $login_www_data =~ ^(on|off|true)$ ]]; then
-		echo "${red}[ERROR] Invalid option! ${end}"
-		exit 1
-	fi
-	
-	if [[ $login_www_data == true || $login_www_data == "on" ]]; then
+	if [[ $login_www_data == "on" ]]; then
 		if [[ $(conf_read login-www-data) == "true" ]]; then
 			echo "${gre}SFTP access for www-data user is already enabled! ${end}"
 			exit 0
@@ -184,7 +174,7 @@ elif [[ -n $login_www_data || -n $nologin_www_data ]]; then
 
 		# www-data sftp-only access jail - if fails usrlib must be listed in /etc/shells
 		sudo usermod -s /usr/lib/openssh/sftp-server www-data
-		sudo addgroup --system sftponly
+		sudo addgroup --system sftponly > /dev/null 2>&1
 		sudo usermod -G sftponly www-data
 		sudo chown root:root /var/www
 		sudo sed -i "/Subsystem sftp/c\Subsystem sftp internal-sftp" /etc/ssh/sshd_config
@@ -205,7 +195,7 @@ ForceCommand internal-sftp
 		sudo service ssh restart
 		echo "${gre}SFTP access for www-data user has been successfuly enabled! ${end}"
 	
-	elif [[ $nologin_www_data == true || $login_www_data == "off" ]]; then
+	elif [[ $login_www_data == "off" ]]; then
 		if [[ $(conf_read login-www-data) != "true" ]]; then
 			echo "${gre}SFTP access for www-data user is already disabled! ${end}"
 			exit 0
@@ -213,8 +203,8 @@ ForceCommand internal-sftp
 		
 		sudo rm -rf /var/www/.ssh
 		sudo sed -i '/www-data:/c\www-data:x:33:33:www-data:\/var\/www:\/usr\/sbin\/nologin' /etc/passwd
-		sudo gpasswd -d www-data sftponly
-		sudo delgroup sftponly
+		sudo gpasswd -d www-data sftponly  > /dev/null 2>&1
+		sudo delgroup sftponly > /dev/null 2>&1
 		sudo chown www-data:www-data /var/www
 		sudo sed -i "/Subsystem sftp/c\Subsystem sftp \/usr\/lib\/openssh\/sftp-server" /etc/ssh/sshd_config
 		sudo sed -i '/WebinolySFTPstart/,/WebinolySFTPstart/{/.*/d}' /etc/ssh/sshd_config
@@ -229,6 +219,9 @@ ForceCommand internal-sftp
 		conf_write login-www-data purged
 		sudo service ssh restart
 		echo "${gre}SFTP access for www-data user has been successfuly disabled! ${end}"
+	else
+		echo "${red}[ERROR] Invalid value for login-www-data! ${end}"
+		exit 1
 	fi
 	nginx_not="true" # Nginx-Reload not-needed.
 	
@@ -241,7 +234,7 @@ elif [[ -n $config_cache ]]; then
 		inactive=$(echo "${inaline//;}" | rev | cut -d' ' -f 1 | rev)
 		inaval=$(echo "${inactive}" | cut -d'=' -f 2)
 		maxsize=$(echo "${inaline}" | rev | cut -d' ' -f 2 | rev)
-		othline=$( grep -F "fastcgi_cache_valid 301 302 307 404" /etc/nginx/conf.d/fastcgi.conf )
+		othline=$( grep -F "fastcgi_cache_valid 301 302 307 404 410" /etc/nginx/conf.d/fastcgi.conf )
 		othval=$(echo "${othline//;}" | rev | cut -d' ' -f 1 | rev)
 	else
 		hitval="Not yet defined"
@@ -265,7 +258,7 @@ elif [[ -n $config_cache ]]; then
 		read -p "   Set new value: " ina
 		ina=${ina:-$inaval}
 		echo ""
-		echo "FastCGI Cache Valid for Errors and Redirections (HttpCode: 301, 302, 307, 404) actual value is: $othval"
+		echo "FastCGI Cache Valid for Errors and Redirections (HttpCode: 301, 302, 307, 404, 410) actual value is: $othval"
 		read -p "   Set new value: " oth
 		oth=${oth:-$othval}
 		echo ""
@@ -285,7 +278,7 @@ elif [[ -n $config_cache ]]; then
 	if [[ "$hit" =~ ^[0-9]+[smhdwMy]$ && "$ina" =~ ^[0-9]+[smhdwMy]$ && "$oth" =~ ^[0-9]+[smhdwMy]$ ]]; then
 		if [[ $(conf_read nginx) == "true" ]]; then	
 			sudo sed -i "/fastcgi_cache_valid 200/c \fastcgi_cache_valid 200 ${hit};" /etc/nginx/conf.d/fastcgi.conf
-			sudo sed -i "/fastcgi_cache_valid 301 302 307 404/c \fastcgi_cache_valid 301 302 307 404 ${oth};" /etc/nginx/conf.d/fastcgi.conf
+			sudo sed -i "/fastcgi_cache_valid 301 302 307 404 410/c \fastcgi_cache_valid 301 302 307 404 410 ${oth};" /etc/nginx/conf.d/fastcgi.conf
 			sudo sed -i "/fastcgi_cache_path/c \fastcgi_cache_path \/var\/run\/nginx-cache levels=1:2 keys_zone=WORDPRESS:50m ${maxsize} inactive=${ina};" /etc/nginx/conf.d/fastcgi.conf
 		fi
 		conf_write fastcgi-conf ${hit},${ina},${oth}
@@ -436,23 +429,32 @@ elif [[ -n $version || -n $v || -n $V ]]; then
 	[[ -z $(conf_read server-version) ]] && sver="Not installed!" || sver=$(conf_read server-version)
 	
 	echo "${blu}"
-	echo "Webinoly version: $(app_version)"
+	echo "Webinoly version: $app_version"
 	echo "Current stack version: $sver"
-	[[ $sver != $(svr_version) ]] && echo "Available stack version: $(svr_version)"
+	[[ $sver != $svr_version ]] && echo "Available stack version: $svr_version"
 	echo "${end}"
 	nginx_not="true" # Nginx-Reload not-needed.
 
 
 elif [[ -n $blockip ]]; then
 	check_for_nginx -ask
-	if [[ -a /etc/nginx/conf.d/blockips.conf ]]; then
+	if [[ -z $purge ]]; then
 		if [[ -n $list ]]; then
 			[[ $list == "raw" || -n $raw ]] && echo "" || echo "${blu}"
-			sudo sed -n 's/^deny //p;' /etc/nginx/conf.d/blockips.conf | sudo sed -n 's/;$//p'
+			if [[ -s /etc/nginx/conf.d/blockips.conf ]]; then
+				sudo sed -n 's/^deny //p;' /etc/nginx/conf.d/blockips.conf | sudo sed -n 's/;$//p'
+			else
+				echo "[Empty] No IP's were found!"
+			fi
 			[[ $list == "raw" || -n $raw ]] && echo "" || echo "${end}"
 		else
 			[[ $blockip == true ]] && read -p "${blu}IP address to block: ${end}" blockip
 			if [[ $(ip_check $blockip) == "true" ]]; then
+				if [[ ! -a /etc/nginx/conf.d/blockips.conf ]]; then
+					sudo touch /etc/nginx/conf.d/blockips.conf
+					sudo chmod 644 /etc/nginx/conf.d/blockips.conf
+					sudo chown -R root:root /etc/nginx/conf.d/blockips.conf
+				fi
 				exist=$( grep -E "^deny $blockip;$" /etc/nginx/conf.d/blockips.conf )
 				if [[ -z $exist ]]; then
 					sh -c "echo -n 'deny $blockip;\n' >> /etc/nginx/conf.d/blockips.conf"
@@ -466,20 +468,16 @@ elif [[ -n $blockip ]]; then
 				exit 1
 			fi
 		fi
-	else
-		echo "${red}[ERROR] Nginx file not found!${end}"
-		exit 1
-	fi
-
-
-elif [[ -n $unblockip ]]; then
-	check_for_nginx -ask
-	if [[ -a /etc/nginx/conf.d/blockips.conf ]]; then
-		[[ $unblockip == true ]] && read -p "${blu}IP address to unblock: ${end}" unblockip
-		if [[ $(ip_check $unblockip) == "true" ]]; then
+	elif [[ -n $purge ]]; then
+		[[ $blockip == true ]] && read -p "${blu}IP address to unblock: ${end}" blockip
+		if [[ $(ip_check $blockip) == "true" ]]; then
 			# https://stackoverflow.com/questions/1797906/delete-using-a-different-delimiter-with-sed
-			sed -i "\#^deny ${unblockip};#d" /etc/nginx/conf.d/blockips.conf
-			echo "${gre}The IP address ${blu}'$unblockip'${gre} was successfully unblocked!${end}"
+			[[ -a /etc/nginx/conf.d/blockips.conf ]] && sed -i "\#^deny ${blockip};#d" /etc/nginx/conf.d/blockips.conf
+			
+			# Remove site-auth-file if empty.
+			[[ ! -s /etc/nginx/conf.d/blockips.conf ]] && sudo rm /etc/nginx/conf.d/blockips.conf
+			
+			echo "${gre}The IP address ${blu}'$blockip'${gre} was successfully unblocked!${end}"
 		else
 			echo "${red}[ERROR] Please, enter a valid IP value!${end}"
 			exit 1
@@ -488,7 +486,7 @@ elif [[ -n $unblockip ]]; then
 		echo "${red}[ERROR] Nginx file not found!${end}"
 		exit 1
 	fi
-	
+
 
 elif [[ -n $conf_value ]]; then
 	if [[ -n $dyn_var && $dyn_var =~ ^[A-Za-z\-]+$ ]]; then
@@ -508,23 +506,12 @@ elif [[ -n $conf_value ]]; then
 
 
 elif [[ -n $yoast_sitemap ]]; then
-	[[ $(conf_read nginx) == "true" ]] && ystmap=$( grep -F "# YoastSitemapStart - Yoast SEO Plugin" /etc/nginx/common/wpcommon.conf )
 	if [[ $yoast_sitemap == "on" ]]; then
-		if [[ -z $ystmap ]]; then
-			[[ $(conf_read nginx) == "true" ]] && sudo cat /opt/webinoly/templates/template-yoast-sitemap >> /etc/nginx/common/wpcommon.conf
-			conf_write yoast-sitemap true
-			echo "${gre}Yoast Sitemap Support was successfully enabled!${end}"
-		else
-			echo "${gre}Yoast Sitemap Support is already enabled!${end}"
-		fi
+		conf_write yoast-sitemap true
+		echo "${gre}Yoast Sitemap Support was successfully enabled!${end}"
 	elif [[ $yoast_sitemap == "off" ]]; then
-		if [[ -n $ystmap || ( -z $ystmap && $(conf_read nginx) != "true" ) ]]; then
-			[[ $(conf_read nginx) == "true" ]] && sudo sed -i '/YoastSitemapStart/,/YoastSitemapEnd/{/.*/d}' /etc/nginx/common/wpcommon.conf
-			conf_write yoast-sitemap purged
-			echo "${gre}Yoast Sitemap Support was successfully disabled!${end}"
-		else
-			echo "${gre}Yoast Sitemap Support is already disabled!${end}"
-		fi
+		conf_write yoast-sitemap purged
+		echo "${gre}Yoast Sitemap Support was successfully disabled!${end}"
 	else
 		echo "${red}[ERROR] Please, enter a valid option to enable/disable Yoast Sitemap Support!${end}"
 		exit 1

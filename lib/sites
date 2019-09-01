@@ -7,10 +7,11 @@ source /opt/webinoly/lib/site-ssl
 
 wp_cache_plugins() {
 	api-events_update si3
-	if [[ ! -d /var/www/$domain/htdocs/wp-content/plugins/nginx-helper ]]; then
+	
+	if [[ ! -d /var/www/$domain/htdocs$subfolder/wp-content/plugins/nginx-helper ]]; then
 		# Download Nginx Helper Plugin
 		sudo wget --timeout=15 -t 1 -qrO /var/www/$domain/htdocs/nginx-helper-plugin.zip https://downloads.wordpress.org/plugin/nginx-helper.latest-stable.zip
-		sudo unzip -qq /var/www/$domain/htdocs/nginx-helper-plugin.zip -d /var/www/$domain/htdocs/wp-content/plugins/
+		sudo unzip -qq /var/www/$domain/htdocs/nginx-helper-plugin.zip -d /var/www/$domain/htdocs$subfolder/wp-content/plugins/
 		sudo rm /var/www/$domain/htdocs/nginx-helper-plugin.zip
 		echo ""
 		echo "${gre} Nginx Helper Plugin has been installed!"
@@ -24,10 +25,10 @@ wp_cache_plugins() {
 		echo "${gre}Nginx Helper Plugin is already installed!${end}"
 	fi
 
-	if [[ ! -d /var/www/$domain/htdocs/wp-content/plugins/redis-cache ]]; then
+	if [[ ! -d /var/www/$domain/htdocs$subfolder/wp-content/plugins/redis-cache ]]; then
 		# Download Redis Object Cache Plugin
 		sudo wget --timeout=15 -t 1 -qrO /var/www/$domain/htdocs/redis-cache-plugin.zip https://downloads.wordpress.org/plugin/redis-cache.latest-stable.zip
-		sudo unzip -qq /var/www/$domain/htdocs/redis-cache-plugin.zip -d /var/www/$domain/htdocs/wp-content/plugins/
+		sudo unzip -qq /var/www/$domain/htdocs/redis-cache-plugin.zip -d /var/www/$domain/htdocs$subfolder/wp-content/plugins/
 		sudo rm /var/www/$domain/htdocs/redis-cache-plugin.zip
 		echo ""
 		echo "${gre} Redis Object Cache Plugin has been installed!"
@@ -39,7 +40,7 @@ wp_cache_plugins() {
 		echo "${gre}Redis Object Cache Plugin is already installed!${end}"
 	fi
 	
-	sudo chown -R www-data:www-data /var/www/$domain/htdocs/wp-content/plugins
+	sudo chown -R www-data:www-data /var/www/$domain/htdocs$subfolder/wp-content/plugins
 }
 
 domain_check() {
@@ -96,7 +97,15 @@ dbword_check() {
 
 wpinstall() {
 	api-events_update si2
-	[[ -z $domain && -n $mysql ]] && local dom="Webinoly_$(pwgen -s -1)" || local dom=$(echo $domain | sed "s/[^0-9A-Za-z]/_/g")
+	if [[ -z $domain && -n $mysql ]]; then
+		local dom="Webinoly_$(pwgen -s -1)"
+	elif [[ -n $subfolder ]]; then
+		local dom=$(echo "$domain$subfolder" | sed "s/[^0-9A-Za-z]/_/g")
+		sudo mkdir -p /var/www/$domain/htdocs$subfolder
+	else
+		local dom=$(echo $domain | sed "s/[^0-9A-Za-z]/_/g")
+	fi
+	
 	local ROOT_PASS=$( echo $(conf_read mysql-root) | openssl enc -d -a -salt )
 	local AUTOGENPASS_WPDB=`pwgen -s -1 16`
 	local setupmysql="y"
@@ -141,9 +150,9 @@ wpinstall() {
 	# Download WP (latest version)
 	if [[ $type == [123] ]]; then
 		sudo wget --timeout=15 -t 1 -qrO /var/www/$domain/htdocs/wp.tar.gz https://wordpress.org/latest.tar.gz
-		sudo tar -xf /var/www/$domain/htdocs/wp.tar.gz -C /var/www/$domain/htdocs/
-		sudo mv /var/www/$domain/htdocs/wordpress/* /var/www/$domain/htdocs/
-		sudo rm -rf /var/www/$domain/htdocs/wordpress
+		sudo tar -xf /var/www/$domain/htdocs/wp.tar.gz -C /var/www/$domain/
+		sudo mv /var/www/$domain/wordpress/* /var/www/$domain/htdocs$subfolder/
+		sudo rm -rf /var/www/$domain/wordpress
 		sudo rm /var/www/$domain/htdocs/wp.tar.gz
 	fi
 	
@@ -355,8 +364,8 @@ wpinstall() {
 					# We can not use GRAN ALL PRIVILIGES with AWS RDS, that's why are all separate.
 					sudo mysql --connect-timeout=10 -h "$dburl" -P "$dbport" -u"$dburoot" -p"$dbproot" <<_EOF_
 CREATE DATABASE ${dbname};
-grant usage on ${dbname}.* to ${dbuser}@\`%\` identified by '${dbpass}';
-GRANT SELECT,ALTER,UPDATE,INSERT,CREATE,DELETE,DROP,INDEX,REFERENCES on ${dbname}.* to ${dbuser}@\`%\`;
+CREATE USER '${dbuser}'@'%' IDENTIFIED BY '${dbpass}';
+GRANT SELECT,ALTER,UPDATE,INSERT,CREATE,DELETE,DROP,INDEX,REFERENCES on ${dbname}.* to '${dbuser}'@'%';
 FLUSH PRIVILEGES;
 _EOF_
 
@@ -396,47 +405,109 @@ _EOF_
 	
 	#WP-Config.php auto-setup
 	if [[ $setupwp == [yY] ]] ; then
-		cp /var/www/$domain/htdocs/wp-config-sample.php /var/www/$domain/wp-config.php
+		[[ -z $subfolder ]] && local wpcon="/var/www/$domain/wp-config.php" || local wpcon="/var/www/$domain/htdocs$subfolder/wp-config.php"
+		cp /var/www/$domain/htdocs$subfolder/wp-config-sample.php $wpcon
 		
 		# Fill new wp-config with data
-		sudo sed -i "/DB_NAME/c \define('DB_NAME', '$dbname');" /var/www/$domain/wp-config.php
-		sudo sed -i "/DB_USER/c \define('DB_USER', '$dbuser');" /var/www/$domain/wp-config.php
-		sudo sed -i "/DB_PASSWORD/c \define('DB_PASSWORD', '$dbpass');" /var/www/$domain/wp-config.php
-		sudo sed -i "/DB_HOST/c \define('DB_HOST', '$dbhost');" /var/www/$domain/wp-config.php
-		sudo sed -i "/table_prefix/c \$table_prefix  = '$dbpref';" /var/www/$domain/wp-config.php
+		sudo sed -i "/DB_NAME/c \define('DB_NAME', '$dbname');" $wpcon
+		sudo sed -i "/DB_USER/c \define('DB_USER', '$dbuser');" $wpcon
+		sudo sed -i "/DB_PASSWORD/c \define('DB_PASSWORD', '$dbpass');" $wpcon
+		sudo sed -i "/DB_HOST/c \define('DB_HOST', '$dbhost');" $wpcon
+		sudo sed -i "/table_prefix/c \$table_prefix  = '$dbpref';" $wpcon
 		
-		sudo sed -i "/'AUTH_KEY'/c \define('AUTH_KEY',        '$(pwgen -s -1 64)');" /var/www/$domain/wp-config.php
-		sudo sed -i "/'SECURE_AUTH_KEY'/c \define('SECURE_AUTH_KEY', '$(pwgen -s -1 64)');" /var/www/$domain/wp-config.php
-		sudo sed -i "/'LOGGED_IN_KEY'/c \define('LOGGED_IN_KEY',   '$(pwgen -s -1 64)');" /var/www/$domain/wp-config.php
-		sudo sed -i "/'NONCE_KEY'/c \define('NONCE_KEY',       '$(pwgen -s -1 64)');" /var/www/$domain/wp-config.php
-		sudo sed -i "/'AUTH_SALT'/c \define('AUTH_SALT',       '$(pwgen -s -1 64)');" /var/www/$domain/wp-config.php
-		sudo sed -i "/'SECURE_AUTH_SALT'/c \define('SECURE_AUTH_SALT','$(pwgen -s -1 64)');" /var/www/$domain/wp-config.php
-		sudo sed -i "/'LOGGED_IN_SALT'/c \define('LOGGED_IN_SALT',  '$(pwgen -s -1 64)');" /var/www/$domain/wp-config.php
-		sudo sed -i "/'NONCE_SALT'/c \define('NONCE_SALT',      '$(pwgen -s -1 64)');" /var/www/$domain/wp-config.php
+		sudo sed -i "/'AUTH_KEY'/c \define('AUTH_KEY',        '$(pwgen -s -1 64)');" $wpcon
+		sudo sed -i "/'SECURE_AUTH_KEY'/c \define('SECURE_AUTH_KEY', '$(pwgen -s -1 64)');" $wpcon
+		sudo sed -i "/'LOGGED_IN_KEY'/c \define('LOGGED_IN_KEY',   '$(pwgen -s -1 64)');" $wpcon
+		sudo sed -i "/'NONCE_KEY'/c \define('NONCE_KEY',       '$(pwgen -s -1 64)');" $wpcon
+		sudo sed -i "/'AUTH_SALT'/c \define('AUTH_SALT',       '$(pwgen -s -1 64)');" $wpcon
+		sudo sed -i "/'SECURE_AUTH_SALT'/c \define('SECURE_AUTH_SALT','$(pwgen -s -1 64)');" $wpcon
+		sudo sed -i "/'LOGGED_IN_SALT'/c \define('LOGGED_IN_SALT',  '$(pwgen -s -1 64)');" $wpcon
+		sudo sed -i "/'NONCE_SALT'/c \define('NONCE_SALT',      '$(pwgen -s -1 64)');" $wpcon
 		
 		# Redis Conf
-		sudo sed -i "/stop editing/i \define('WP_REDIS_SELECTIVE_FLUSH', true);" /var/www/$domain/wp-config.php
-		sudo sed -i "/stop editing/i \define('WP_CACHE_KEY_SALT', 'redis_object_cache_for_wp_$domain');" /var/www/$domain/wp-config.php
-		
-		# Multisite wp-config
-		if [[ -n $wpsubdir || -n $wpsubdom ]]; then
-			sudo sed -i "/stop editing/i \define('WP_ALLOW_MULTISITE', true);" /var/www/$domain/wp-config.php
-			sudo sed -i "/stop editing/i \#define('MULTISITE', true);" /var/www/$domain/wp-config.php
-			sudo sed -i "/stop editing/i \#define('DOMAIN_CURRENT_SITE', '$domain');" /var/www/$domain/wp-config.php
-			sudo sed -i "/stop editing/i \#define('PATH_CURRENT_SITE', '/');" /var/www/$domain/wp-config.php
-			sudo sed -i "/stop editing/i \#define('SITE_ID_CURRENT_SITE', 1);" /var/www/$domain/wp-config.php
-			sudo sed -i "/stop editing/i \#define('BLOG_ID_CURRENT_SITE', 1);" /var/www/$domain/wp-config.php
-		fi
-		if [[ -n $wpsubdir ]]; then
-			sudo sed -i "/stop editing/i \#define('SUBDOMAIN_INSTALL', false);" /var/www/$domain/wp-config.php
-		elif [[ -n $wpsubdom ]]; then
-			sudo sed -i "/stop editing/i \#define('SUBDOMAIN_INSTALL', true);" /var/www/$domain/wp-config.php
-			sudo sed -i "/server_name /c \	server_name $domain *.$domain;" /etc/nginx/sites-available/$domain
-		fi
+		sudo sed -i "/stop editing/i \define('WP_REDIS_SELECTIVE_FLUSH', true);" $wpcon
+		sudo sed -i "/stop editing/i \define('WP_CACHE_KEY_SALT', 'redis_object_cache_for_wp_$domain$(echo $subfolder | sed "s/\//_/g")');" $wpcon
 	fi
 	
 }
 
+
+db_delete() {
+	local domain="$1"
+	local done="0"
+	
+	wp_dbdata $1
+	[[ -z $wpconfpath ]] && return
+	
+	dbsetup="DELETE FROM mysql.user WHERE User='$wp_dbuser';DROP DATABASE IF EXISTS $wp_dbname;DELETE FROM mysql.db WHERE Db='$wp_dbname' OR Db='$wp_dbname\\_%';FLUSH PRIVILEGES;"
+	while [[ $done != "1" ]]
+	do
+		done="1"
+		if [[ $wp_dbhost == "localhost" ]]; then
+			# Check if MySQL installed
+			if [[ ! -d /etc/mysql || $(conf_read mysql) != "true" || $(conf_read mysql-client) != "true" ]]; then
+				echo "${red}[ERROR] Seems like MySQL is not installed or Webinoly can not detect it!"
+				echo " - Database can not be deleted -${blu} $domain ${end}"
+				return
+			fi
+			local ROOT_PASS=$( echo $(conf_read mysql-root) | openssl enc -d -a -salt )
+			sudo mysql --connect-timeout=10 --user=root -p$ROOT_PASS -e "$dbsetup"
+			if [ $? != "0" ]; then
+				done="0"
+				echo "${red}============================================"
+				echo "    [Error]: Database delete failed."
+				echo "============================================"
+				echo ""
+				echo "${blu}  Retry [Y/n]? "
+				while read -r -n 1 -s answer; do
+					answer=${answer:-y}
+					[[ $answer = [YyNn] ]] && break
+				done
+				[[ $answer  == [Nn] ]] && done="1"
+			else
+				echo "${gre}Database of your site ${blu}${domain}${subfolder}${gre} has been successfully deleted! ${end}"
+			fi
+		else
+			if [[ -z $wp_uroot || -z $wp_proot ]]; then
+				echo ""
+				echo "${gre}External DB found in${blu} $domain ${gre}(Press 'Enter' key twice to skip and not delete)"
+				read -p "${blu}External DB root username [root]: " wp_uroot
+				wp_uroot=${wp_uroot:-root}
+				read -p "External DB root password: " wp_proot
+			fi
+			if [[ $wp_uroot == "root" && -z $wp_proot ]]; then
+				echo "${red}Action aborted, database not deleted!"
+				continue 1;
+			else
+				if [[ $(conf_read mysql-client) != "true" ]]; then
+					echo "${gre}MySQL Client is not installed and we need it to stablish a connection with your Database."
+					echo "Wait while we install MySQL Client... installing!!!${end}"
+					mysql_client_install > /dev/null 2>&1 &
+					echo "${gre}MySQL Client has been successfully installed!${end}"
+				fi
+				
+				sudo mysql --connect-timeout=10 -h "$wp_dburl" -P "$wp_dbport" -u"$wp_uroot" -p"$wp_proot" -e "$dbsetup"
+				if [ $? != "0" ]; then
+					done="0"
+					echo "${red}============================================"
+					echo "    [Error]: Database delete failed."
+					echo "============================================"
+					echo ""
+					echo "${blu}  Retry [Y/n]? "
+					while read -r -n 1 -s answer; do
+						answer=${answer:-y}
+						[[ $answer = [YyNn] ]] && break
+					done
+					[[ $answer  == [Nn] ]] && done="1"
+				else
+					echo "${gre}Database of your site ${blu}${domain}${subfolder}${gre} has been successfully deleted! ${end}"
+				fi
+			fi
+			echo "${end}"
+		fi
+	done
+	
+}
 
 
 deletesite() {
@@ -446,17 +517,42 @@ deletesite() {
 		echo "${end}"
 	fi
 
-	# Determine if site is WP, so you should delete the DB too.
 	[[ $delete == "force" ]] && local dbdel="Y"
 	[[ $delete == "keep-db" ]] && local dbdel="N"
-	if [[ -z $dbdel && ( -a /var/www/$domain/wp-config.php || -a /var/www/$domain/htdocs/wp-config.php ) ]]; then
-		echo "${blu}Delete Database [Y/n]?${end}"
-		while read -r -n 1 -s dbdel; do
-		  local dbdel=${dbdel:-y}
-		  [[ $dbdel = [YyNn] ]] && break
+
+	# Check if site contains WP in subfolders.
+	if [[ -z $dbdel || $dbdel = [Yy] ]]; then
+		for site in "/etc/nginx/apps.d/$domain_"*-php.conf
+		do 
+			subfolder="/$(echo $site | cut -f 2- -d "_" -s | cut -f -1 -d "-" -s | sed "s/_/\//g")"
+			if [[ -n $subfolder && -a /var/www/$domain/htdocs$subfolder/wp-config.php ]]; then
+				if ! [[ $delete =~ ^(force|keep-db)$ ]]; then
+					echo "${blu}Delete Database ${end}'$domain$subfolder'${blu} [Y/n]?${end}"
+					while read -r -n 1 -s dbsubdel; do
+					  local dbsubdel=${dbsubdel:-y}
+					  [[ $dbsubdel = [YyNn] ]] && break
+					done
+				fi
+				if [[ $dbsubdel == [yY] || $dbdel == [yY] ]]; then
+					db_delete $domain
+					sudo rm -rf /var/www/$domain/htdocs$subfolder
+				fi
+			fi
+			subfolder=""
 		done
 	fi
-	[[ $dbdel == [yY] ]] && db_delete $domain
+	
+	# Determine if main site is WP, so you should delete the DB too.
+	if [[ ( -z $dbdel || $dbdel = [Yy] ) && ( -a /var/www/$domain/wp-config.php || -a /var/www/$domain/htdocs/wp-config.php ) ]]; then
+		if ! [[ $delete =~ ^(force|keep-db)$ ]]; then
+			echo "${blu}Delete Database ${end}'$domain$subfolder'${blu} [Y/n]?${end}"
+			while read -r -n 1 -s dbdel; do
+			  local dbdel=${dbdel:-y}
+			  [[ $dbdel = [YyNn] ]] && break
+			done
+		fi
+		[[ $dbdel == [yY] ]] && db_delete $domain
+	fi
 	
 	# Revoke SSL Cert
 	if [[ -d /etc/letsencrypt/live/$domain && -z $revoke && $delete != "force" ]]; then
@@ -470,6 +566,8 @@ deletesite() {
 	
 	
 	# Delete site files
+	sudo rm -rf /etc/nginx/apps.d/$domain*.conf
+	sudo rm -rf /etc/nginx/apps.d/.htpasswd-$domain
 	sudo rm -rf /etc/nginx/sites-available/$domain
 	sudo rm -rf /etc/nginx/sites-enabled/$domain
 	sudo rm -rf /var/www/$domain
@@ -484,7 +582,7 @@ createsite() {
 	# Check domain and then prevent reserved characters for file names.
 	domain_check $domain
 	domain=$(echo $domain | sed "s/[^\.0-9A-Za-z\-]/_/g" | sed "s/^[\.]/_/g" | sed "s/\.\./_/g")
-		
+
 	# Check for duplicate sites
 	if [[ -a /etc/nginx/sites-available/$domain ]]; then
 		echo "${red}[ERROR] Can not create site${blu} $domain ${red}because already exists!${end}"
@@ -541,12 +639,12 @@ createsite() {
 	fi
 	
 	# Check if only-error log is enabled
-	[[ $(conf_read global-access-log-off) == "true" ]] && sudo log $domain -only-error=on
+	[[ $(conf_read global-access-log-off) == "true" && $domain != $(conf_read tools-port) ]] && sudo log $domain -only-error=on > /dev/null 2>&1
 	
 	sudo chown -R www-data:www-data /var/www
 	[[ $(conf_read login-www-data) == "true" ]] && sudo chown root:root /var/www
 
-	echo "${gre}Site${blu} $domain ${gre}has been successfully created!${end}"
+	echo "${gre}Site${blu} $domain$subfolder ${gre}has been successfully created!${end}"
 }
 
 
