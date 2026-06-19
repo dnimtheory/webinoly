@@ -1,51 +1,73 @@
-# Webinoly ![CI status](https://img.shields.io/badge/build-passing-brightgreen.svg)
+<div align="center">
+ 	<p><a href="https://webinoly.com/">
+		<picture>
+		  <source media="(prefers-color-scheme: dark)" srcset="https://cdn.qrokes.com/wp-content/uploads/sites/4/2025/06/Webinoly_Logo_Dark_Transparent.png">
+		  <source media="(prefers-color-scheme: light)" srcset="https://cdn.qrokes.com/wp-content/uploads/sites/4/2025/06/Webinoly_Logo_Light_Transparent.png">
+		  <img width="50%" alt="Webinoly logo" src="https://cdn.qrokes.com/wp-content/uploads/sites/4/2025/06/Webinoly_Logo_Light_Transparent.png">
+		</picture>
+	</a></p>
+ 	<p>
+		<img src="https://img.shields.io/badge/build-passing-brightgreen.svg" />
+        <img src="https://img.shields.io/github/license/QROkes/webinoly" />
+        <img src="https://img.shields.io/github/v/release/QROkes/webinoly?color=orange" />
+	</p>
+    <p><b>Optimized NGINX Web Server</b></br>
+    <i>A powerful set of commands for doing just about anything you could wish.</i></p>
+    <p><a href="https://webinoly.com/">Official Website</a> | <a href="https://webinoly.com/documentation/">Documentation</a> | <a href="https://github.com/QROkes/webinoly/releases">Changelog</a></p>
+</div>
 
-**Optimized LEMP Web Server**
+## Overview
+**Webinoly offers one of the most reliable configurations for hosting websites—deploy everything in a single step.**
 
-A powerful set of commands for doing just about anything you could wish.
+Install a complete LEMP stack or individual packages tailored to your needs.
 
-Linux Ubuntu + Nginx + MariaDB (MySQL) + PHP is one of the most reliable and powerful configurations to host your websites. **With Webinoly you can set up your web server in just one step.**
+### 🚀 Key Features
+- **LEMP Stack:** Ubuntu + NGINX + MariaDB/MySQL + PHP
+- **Performance:** FastCGI Cache, Redis Object Cache, HTTP/3 support
+- **Security:** Free SSL via Let’s Encrypt, HTTP Authentication
+- **WordPress Tools:** Subfolder install, external database, multisite, domain mapping
+- **Reverse Proxy:** Compatible with Java, Node, React, Vue, etc.
+- **Backup & Migration:** Full site/server cloning and transfer tools
+- **Monitoring:** Real-time log viewer
+- **Extras:** Redirection manager, SMTP support, custom headers
 
-Webinoly provides a set of tools and commands that facilitate the web server administration.
-- Unique commands to create, delete, disable sites.
-- Free SSL certificates for your sites with Let’s Encrypt and automatic server configuration.
-- HTTP/2 dramatically increase the speed of serving your content.
-- PHP v7.3 and support for earlier versions if needed (7.1 and 7.2).
-- FastCgi Cache and Redis Object Cache for your WordPress sites.
-- Get an A+ grade on [Qualys (SSL Labs) Test](https://www.ssllabs.com/ssltest/).
-- Log viewer in real time.
+Get an A+ grade on [Qualys (SSL Labs) Test](https://www.ssllabs.com/ssltest/).
 
-### Requirements
-* Ubuntu 18.04 or 16.04
 
 ## Usage
 
 ```bash
-# Install Webinoly and LEMP
-wget -qO weby qrok.es/wy && sudo bash weby 3
+# Install Webinoly and build the stack
+curl -sSL qrok.es/wy | sudo bash
 
-# Create your first site.
+# Create your first WordPress site.
 sudo site example.com -wp
+
+# Authentication
+sudo httpauth -add
 ```
 
-## Documentation
-For complete documentation, please [visit our site](https://webinoly.com/en/).
+### Requirements
+* Ubuntu ~~26.04~~ or 24.04
+* Architecture: arm64 / x86_64 (amd64)
+* RAM Minimum: 512 MB
 
-Also, you can visit our [Community Support Forum](https://webinoly.com/support/)
+
+### Documentation
+For complete documentation: [English](https://webinoly.com/documentation/) | [Español](https://webinoly.com/es/documentacion/)
+
 
 ## Contributing
-Please open an issue first to discuss what you would like to change.
+You don’t need to be a developer to contribute—[visit our site to learn how to get involved.](https://webinoly.com/contribute/).
 
-You don't need developer skills to help, visit our site to know [How to Contribute to Webinoly](https://webinoly.com/en/contribute/).
+### Sponsor Me!
+If you find Webinoly useful, consider supporting the project via:
 
-## Donations
+- [GitHub Sponsors](https://github.com/sponsors/QROkes)
+- [PayPal](https://www.paypal.me/qrokes)
+- [Bitcoin](https://www.blockchain.com/en/btc/address/1E3Ybo5UcvaAr1MoK4nBnMRFFY9aEMiku3)
 
-[![PayPal Donations](https://cdn.qrokes.com/media/paypal-webinoly-donate.png)](https://www.paypal.me/qrokes)
-[![Bitcoin Donations](https://cdn.qrokes.com/media/bitcoin-webinoly-donate.png)](https://www.blockchain.com/btc/payment_request?address=1E3Ybo5UcvaAr1MoK4nBnMRFFY9aEMiku3)
-
-If you like Webinoly, buy me a coffee or a beer to show support.
-
-**_Your regular donations keeps this project moving forward._**
-
-## License
-[GNU GPLv3](https://choosealicense.com/licenses/gpl-3.0/)
+### Community
+- [Discussions/Issues](https://webinoly.com/premium/)
+- Follow us on [X/Twitter](https://x.com/Webinoly) or [Mastodon](https://fosstodon.org/@webinoly)
+- Subscribe to our [Newsletter](https://webinoly.com/newsletter/)
